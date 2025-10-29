@@ -84,7 +84,7 @@ export default function AuthPage() {
       });
 
       // If user has a role, redirect to their home page, otherwise to role selection
-      if (role=="student" || role=="teacher") {
+      if (role == "student" || role == "teacher") {
         navigate({ to: `/${role}/home` });
       } else {
         navigate({ to: '/select-role' });
@@ -219,11 +219,13 @@ export default function AuthPage() {
         {/* Left: Heading, subheading, features */}
         <div className="flex-1 flex flex-col items-start gap-4 sm:gap-6 z-10 w-full lg:w-auto">
           <div className="flex flex-col gap-1">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold leading-tight">
-              <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                Spandanam
-              </span>
-            </h1>
+            <div className="h-10 sm:h-14 lg:h-18 xl:h-22">
+              <img
+                src="/VLED 3.png"
+                alt="Spandanam"
+                className="h-45 w-auto object-cover"
+              />
+            </div>
             <p className="text-sm font-medium text-blue-500/90">Empowering Education</p>
           </div>
           <p className="text-gray-600 text-sm sm:text-base lg:text-lg max-w-md">

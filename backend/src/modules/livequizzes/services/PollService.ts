@@ -4,9 +4,25 @@ import { Room } from '../../../shared/database/models/Room.js';
 import { pollSocket } from '../utils/PollSocket.js';
 import { UserModel } from '#root/shared/database/models/User.js';
 
+interface InMemoryPoll {
+  pollId: string;
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+  responses: Record<string, number>; // optionIndex: count
+  totalResponses: number;
+  userResponses: Map<string, number>; // userId: optionIndex
+  timer: number;
+  startTime?: number;
+  timeLeft: number;
+  roomCode: string;
+}
+
 @injectable()
 export class PollService {
   private pollSocket = pollSocket;
+  private activePolls = new Map<string, InMemoryPoll>(); // pollId -> InMemoryPoll
+  private pollTimers = new Map<string, NodeJS.Timeout>(); // pollId -> timer
   async createPoll(roomCode: string, data: {
     question: string;
     options: string[];
@@ -80,5 +96,169 @@ export class PollService {
     }
 
     return results;
+  }
+
+  // In-memory poll methods
+  async createInMemoryPoll(roomCode: string, data: {
+    question: string;
+    options: string[];
+    correctOptionIndex: number;
+    timer?: number;
+  }) {
+    const pollId = crypto.randomUUID();
+    const poll: InMemoryPoll = {
+      pollId,
+      question: data.question,
+      options: data.options,
+      correctOptionIndex: data.correctOptionIndex,
+      responses: {},
+      totalResponses: 0,
+      userResponses: new Map(),
+      timer: data.timer ?? 0, // 0 means no timer
+      timeLeft: data.timer ?? 0,
+      roomCode,
+    };
+
+    this.activePolls.set(pollId, poll);
+
+    // Start timer if specified
+    if (poll.timer > 0) {
+      this.startPollTimer(pollId);
+    }
+
+    // Emit to all clients
+    this.emitPollUpdate(roomCode, pollId);
+
+    return {
+      ...poll,
+      userResponses: undefined, // Don't expose user responses
+    };
+  }
+
+  async submitInMemoryAnswer(roomCode: string, pollId: string, userId: string, answerIndex: number) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.roomCode !== roomCode) {
+      throw new Error('Poll not found or invalid room');
+    }
+
+    // Update in-memory response tracking
+    const previousResponse = poll.userResponses.get(userId);
+
+    // If user already answered, decrement previous response count
+    if (previousResponse !== undefined) {
+      const prevOption = previousResponse.toString();
+      poll.responses[prevOption] = (poll.responses[prevOption] || 1) - 1;
+      poll.totalResponses--;
+    }
+
+    // Update new response
+    poll.userResponses.set(userId, answerIndex);
+    const optionKey = answerIndex.toString();
+    poll.responses[optionKey] = (poll.responses[optionKey] || 0) + 1;
+    poll.totalResponses++;
+
+    // Emit update to all clients
+    this.emitPollUpdate(roomCode, pollId);
+
+    return { success: true };
+  }
+
+  async getInMemoryPollResults(roomCode: string, pollId: string) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.roomCode !== roomCode) {
+      return null;
+    }
+    return this.getPollData(poll);
+  }
+
+  async endInMemoryPoll(roomCode: string, pollId: string) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.roomCode !== roomCode) return;
+
+    // Clear timer if exists
+    const timer = this.pollTimers.get(pollId);
+    if (timer) {
+      clearInterval(timer);
+      this.pollTimers.delete(pollId);
+    }
+
+    // Emit final results
+    this.pollSocket.emitToRoom(roomCode, 'in-memory-poll-ended', {
+      pollId: poll.pollId,
+      responses: { ...poll.responses },
+      totalResponses: poll.totalResponses
+    });
+  }
+
+  async deleteInMemoryPoll(roomCode: string, pollId: string) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.roomCode !== roomCode) return false;
+
+    // Clear timer if exists
+    const timer = this.pollTimers.get(pollId);
+    if (timer) {
+      clearInterval(timer);
+      this.pollTimers.delete(pollId);
+    }
+
+    // Remove from active polls
+    this.activePolls.delete(pollId);
+    return true;
+  }
+
+  getActiveInMemoryPolls(roomCode: string) {
+    return Array.from(this.activePolls.values())
+      .filter(poll => poll.roomCode === roomCode)
+      .map(poll => this.getPollData(poll));
+  }
+
+  // Helper methods
+  private startPollTimer(pollId: string) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.timer <= 0) return;
+
+    poll.startTime = Date.now();
+
+    const updateInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - (poll.startTime || now)) / 1000);
+      poll.timeLeft = Math.max(0, poll.timer - elapsed);
+
+      // Emit time update
+      this.pollSocket.emitToRoom(poll.roomCode, 'in-memory-poll-time-update', {
+        pollId: poll.pollId,
+        timeLeft: poll.timeLeft
+      });
+
+      // End poll if time's up
+      if (poll.timeLeft <= 0) {
+        clearInterval(updateInterval);
+        this.pollTimers.delete(pollId);
+        this.endInMemoryPoll(poll.roomCode, poll.pollId);
+      }
+    }, 1000);
+
+    // Store the interval
+    this.pollTimers.set(pollId, updateInterval);
+  }
+
+  private emitPollUpdate(roomCode: string, pollId: string) {
+    const poll = this.activePolls.get(pollId);
+    if (!poll) return;
+
+    this.pollSocket.emitToRoom(roomCode, 'in-memory-poll-update', this.getPollData(poll));
+  }
+
+  private getPollData(poll: InMemoryPoll) {
+    return {
+      pollId: poll.pollId,
+      question: poll.question,
+      options: poll.options,
+      correctOptionIndex: poll.correctOptionIndex,
+      responses: { ...poll.responses },
+      totalResponses: poll.totalResponses,
+      timeLeft: poll.timeLeft,
+      timer: poll.timer,
+    };
   }
 }

@@ -66,7 +66,7 @@ export default function StudentLayout() {
               <div className="relative h-10 w-10 sm:h-14 sm:w-14 bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg sm:rounded-xl flex items-center justify-center overflow-hidden shadow-md dark:from-blue-500 dark:to-blue-700">
                 <img
                   // src="https://continuousactivelearning.github.io/vibe/img/logo.png"
-                  src="/VLED.png"
+                  src="/VLED 4.png"
                   alt="EduPoll Logo"
                   className="h-6 w-6 sm:h-10 sm:w-10 object-contain"
                 />
@@ -74,6 +74,7 @@ export default function StudentLayout() {
             </div>
             <div className="hidden sm:block">
               <h1 className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">
+                
                 <span className="font-normal">Spandanam</span>
               </h1>
               <p className="text-xs text-slate-600 -mt-1 dark:text-gray-400">
