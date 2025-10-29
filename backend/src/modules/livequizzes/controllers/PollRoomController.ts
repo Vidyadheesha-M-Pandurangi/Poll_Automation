@@ -30,6 +30,8 @@ import { OpenAPI } from 'routing-controllers-openapi';
 import dotenv from 'dotenv';
 import mime from 'mime-types';
 import * as fsp from 'fs/promises';
+import { CreateInMemoryPollDto, InMemoryPollResponse, InMemoryPollResult, SubmitInMemoryAnswerDto } from '../validators/LivepollValidator.js';
+import { validate } from 'class-validator';
 
 dotenv.config();
 const appOrigins = process.env.APP_ORIGINS;
@@ -257,94 +259,6 @@ async getYoutubeAudio(@Req() req: Request, @Res() res: Response) {
     }
   }
   
-   // In-memory poll endpoints
-  @Post('/:code/in-memory-polls')
-  @Authorized()
-  @OpenAPI({
-    summary: 'Create a new in-memory poll',
-    description: 'Creates a new in-memory poll in the specified room',
-    responses: {
-      '201': { description: 'Poll created successfully' },
-      '400': { description: 'Invalid input' },
-      '401': { description: 'Unauthorized' },
-      '404': { description: 'Room not found' }
-    }
-  })
-  async createInMemoryPoll(
-    @Param('code') roomCode: string,
-    @Body() body: CreateInMemoryPollDto
-  ): Promise<InMemoryPollResponse> {
-    // Validate input
-    const errors = await validate(body);
-    if (errors.length > 0) {
-      throw new BadRequestError(`Validation failed: ${errors.toString()}`);
-    }
-
-    // Verify room exists
-    const room = await this.roomService.getRoomByCode(roomCode);
-    if (!room) {
-      throw new NotFoundError('Room not found');
-    }
-
-    // Validate correctOptionIndex is within bounds
-    if (body.correctOptionIndex >= body.options.length) {
-      throw new BadRequestError('correctOptionIndex is out of bounds');
-    }
-
-    try {
-      const poll = await this.pollService.createInMemoryPoll(
-        roomCode,
-        {
-          question: body.question,
-          options: body.options,
-          correctOptionIndex: body.correctOptionIndex,
-          timer: body.timer
-        }
-      );
-
-      return poll;
-    } catch (error) {
-      console.error('Error creating in-memory poll:', error);
-      throw new BadRequestError('Failed to create poll');
-    }
-  }
-
-  @Post('/:code/in-memory-polls/:pollId/answer')
-  @Authorized()
-  @OpenAPI({
-    summary: 'Submit an answer to an in-memory poll',
-    description: 'Submits an answer to the specified in-memory poll',
-    responses: {
-      '200': { description: 'Answer submitted successfully' },
-      '400': { description: 'Invalid input' },
-      '401': { description: 'Unauthorized' },
-      '404': { description: 'Poll not found' }
-    }
-  })
-  async submitInMemoryAnswer(
-    @Param('code') roomCode: string,
-    @Param('pollId') pollId: string,
-    @Body() body: SubmitInMemoryAnswerDto
-  ): Promise<{ success: boolean }> {
-    // Validate input
-    const errors = await validate(body);
-    if (errors.length > 0) {
-      throw new BadRequestError(`Validation failed: ${errors.toString()}`);
-    }
-
-    try {
-      await this.pollService.submitInMemoryAnswer(
-        roomCode,
-        pollId,
-        body.userId,
-        body.answerIndex
-      );
-      return { success: true };
-    } catch (error) {
-      console.error('Error submitting answer:', error);
-      throw new BadRequestError('Failed to submit answer');
-    }
-  }
 
   @Get('/:code/in-memory-polls/:pollId/results')
   @Authorized()

@@ -137,7 +137,7 @@ export default function TeacherPollRoom() {
       correctOptionIndex: newCorrectIndex
     };
   }, []);
-  
+
   // UI State
   const [showPollModal, setShowPollModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
@@ -409,8 +409,8 @@ export default function TeacherPollRoom() {
 
       if (audioContextRef.current) {
         audioContextRef.current.close();
-    }
-    
+      }
+
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -430,7 +430,7 @@ export default function TeacherPollRoom() {
           const remainderText = words.slice(processedWordsRef.current, processedWordsRef.current + remaining).join(" ");
           processedWordsRef.current += remaining;
           enqueueTextChunk(remainderText);
-    }
+        }
 
         // Wait for queue to finish processing
         while (processingQueueRef.current || pendingTextChunksRef.current.length > 0) {
@@ -487,7 +487,7 @@ export default function TeacherPollRoom() {
           setIsListening(true);
           setInterimTranscript("");
         }
-    } catch (error) {
+      } catch (error) {
         console.error("Error accessing microphone:", error);
       }
     }
@@ -621,7 +621,7 @@ export default function TeacherPollRoom() {
         toast.error(apiError.response?.data?.message || "Failed to end room");
       } else {
         toast.error("Failed to end room");
-    }
+      }
     } finally {
       setIsEndingRoom(false);
       setShowEndRoomConfirm(false);
@@ -788,8 +788,8 @@ export default function TeacherPollRoom() {
     ];
 
     const selectedModelLabel = models.find(model => model.value === selectedModel)?.label || "Select Model";
-      
-      return (
+
+    return (
       <div className={`relative ${className}`}>
         <button
           type="button"
@@ -830,11 +830,11 @@ export default function TeacherPollRoom() {
                   )}
                 </button>
               ))}
-          </div>
+            </div>
           </>
         )}
-        </div>
-      );
+      </div>
+    );
   };
 
 
@@ -974,15 +974,22 @@ export default function TeacherPollRoom() {
     }
   }, [displayTranscript, useWhisper, enqueueTextChunk]);
 
-  const handleCreateManualPoll = () => {
 
+  const handleGeneratedQuestionClick = () => {
+    setShowPreview(!showPreview)
+    setShowPollModal(false);
+    setShowResultsModal(false);
+  }
+
+  const handleCreateManualPoll = () => {
     setShowPollModal(true);
+    setShowPreview(false)
     setShowResultsModal(false);
   };
 
   const handlePollResultsbutton = () => {
-
     setShowResultsModal(true);
+    setShowPreview(false)
     setShowPollModal(false);
   };
 
@@ -1035,29 +1042,25 @@ export default function TeacherPollRoom() {
               </span>
             </h2>
             <div className="flex items-center gap-2">
-              <Button 
-                variant={showPreview ? "default" : "outline"} 
-                onClick={() => setShowPreview(!showPreview)}
+              <Button
+                variant={showPreview ? "default" : "outline"}
+                onClick={handleGeneratedQuestionClick}
                 className="mr-2"
+                disabled={!generatedQuestions.length}
               >
                 <Wand2 className="w-4 h-4 mr-2" />
-                {showPreview ? 'Hide Questions' : 'Generated Questions'}
+                {showPreview  ? 'Hide Questions' : 'Generated Questions'}
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setQuestion("");
-                  setOptions(["", "", "", ""]);
-                  setCorrectOptionIndex(0);
-                  setTimer(30);
-                  setShowPollModal(true);
-                }} 
+              <Button
+                variant={showPollModal ? "default" : "outline"}
+                onClick={handleCreateManualPoll}
                 className="mr-2"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Create Live Poll
               </Button>
-              <Button variant="outline" onClick={handlePollResultsbutton}>
+              <Button variant={showResultsModal ? "default" : "outline"}
+                onClick={handlePollResultsbutton}>
                 <BarChart2 className="w-4 h-4 mr-2" />
                 Poll Results
               </Button>

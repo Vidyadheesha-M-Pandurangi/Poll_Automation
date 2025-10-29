@@ -41,16 +41,67 @@ export class PollService {
       answers: []
     };
 
+    const livepoll: InMemoryPoll = {
+      pollId,
+      question: data.question,
+      options: data.options,
+      correctOptionIndex: data.correctOptionIndex,
+      responses: {},
+      totalResponses: 0,
+      userResponses: new Map(),
+      timer: data.timer ?? 0, // 0 means no timer
+      timeLeft: data.timer ?? 0,
+      roomCode,
+    };
+
     await Room.updateOne(
       { roomCode },
       { $push: { polls: poll } }
     );
 
+    this.activePolls.set(pollId, livepoll);
+    // localStorage.setItem('activePolls', JSON.stringify(this.activePolls));
+
+    // Start timer if specified
+    if (poll.timer > 0) {
+      this.startPollTimer(pollId);
+    }
+
     pollSocket.emitToRoom(roomCode, 'new-poll', poll);
+
+    // Emit update to all clients
+    this.emitPollUpdate(roomCode, pollId);
     return poll;
   }
 
+
+
   async submitAnswer(roomCode: string, pollId: string, userId: string, answerIndex: number) {
+
+    const poll = this.activePolls.get(pollId);
+    if (!poll || poll.roomCode !== roomCode) {
+      throw new Error('Poll not found or invalid room');
+    }
+
+    // Update in-memory response tracking
+    const previousResponse = poll.userResponses.get(userId);
+
+    // If user already answered, decrement previous response count
+    if (previousResponse !== undefined) {
+      const prevOption = previousResponse.toString();
+      poll.responses[prevOption] = (poll.responses[prevOption] || 1) - 1;
+      poll.totalResponses--;
+    }
+
+    // Update new response
+    poll.userResponses.set(userId, answerIndex);
+    const optionKey = answerIndex.toString();
+    poll.responses[optionKey] = (poll.responses[optionKey] || 0) + 1;
+    poll.totalResponses++;
+
+    // Emit update to all clients
+    this.emitPollUpdate(roomCode, pollId);
+
     await Room.updateOne(
       { roomCode, "polls._id": pollId },
       { $push: { "polls.$.answers": { userId, answerIndex, answeredAt: new Date() } } }
@@ -98,69 +149,9 @@ export class PollService {
     return results;
   }
 
-  // In-memory poll methods
-  async createInMemoryPoll(roomCode: string, data: {
-    question: string;
-    options: string[];
-    correctOptionIndex: number;
-    timer?: number;
-  }) {
-    const pollId = crypto.randomUUID();
-    const poll: InMemoryPoll = {
-      pollId,
-      question: data.question,
-      options: data.options,
-      correctOptionIndex: data.correctOptionIndex,
-      responses: {},
-      totalResponses: 0,
-      userResponses: new Map(),
-      timer: data.timer ?? 0, // 0 means no timer
-      timeLeft: data.timer ?? 0,
-      roomCode,
-    };
-
-    this.activePolls.set(pollId, poll);
-
-    // Start timer if specified
-    if (poll.timer > 0) {
-      this.startPollTimer(pollId);
-    }
-
-    // Emit to all clients
-    this.emitPollUpdate(roomCode, pollId);
-
-    return {
-      ...poll,
-      userResponses: undefined, // Don't expose user responses
-    };
-  }
 
   async submitInMemoryAnswer(roomCode: string, pollId: string, userId: string, answerIndex: number) {
-    const poll = this.activePolls.get(pollId);
-    if (!poll || poll.roomCode !== roomCode) {
-      throw new Error('Poll not found or invalid room');
-    }
 
-    // Update in-memory response tracking
-    const previousResponse = poll.userResponses.get(userId);
-
-    // If user already answered, decrement previous response count
-    if (previousResponse !== undefined) {
-      const prevOption = previousResponse.toString();
-      poll.responses[prevOption] = (poll.responses[prevOption] || 1) - 1;
-      poll.totalResponses--;
-    }
-
-    // Update new response
-    poll.userResponses.set(userId, answerIndex);
-    const optionKey = answerIndex.toString();
-    poll.responses[optionKey] = (poll.responses[optionKey] || 0) + 1;
-    poll.totalResponses++;
-
-    // Emit update to all clients
-    this.emitPollUpdate(roomCode, pollId);
-
-    return { success: true };
   }
 
   async getInMemoryPollResults(roomCode: string, pollId: string) {
@@ -250,6 +241,15 @@ export class PollService {
   }
 
   private getPollData(poll: InMemoryPoll) {
+    // Calculate correct percentage
+    const correctResponses = poll.responses[poll.correctOptionIndex] || 0;
+    const correctPercentage = poll.totalResponses > 0
+      ? Math.round((correctResponses / poll.totalResponses) * 100)
+      : 0;
+
+    // Convert userResponses Map to plain object
+    const userResponses = Object.fromEntries(poll.userResponses);
+
     return {
       pollId: poll.pollId,
       question: poll.question,
@@ -259,6 +259,9 @@ export class PollService {
       totalResponses: poll.totalResponses,
       timeLeft: poll.timeLeft,
       timer: poll.timer,
+      correctPercentage,
+      userResponses,
+      roomCode: poll.roomCode,
     };
   }
 }
