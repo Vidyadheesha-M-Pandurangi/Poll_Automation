@@ -219,13 +219,18 @@ export default function AuthPage() {
         {/* Left: Heading, subheading, features */}
         <div className="flex-1 flex flex-col items-start w-full lg:w-auto">
           <div className="relative top-10">
-            <img
-              src="/VLED 3.png"
-              alt="Spandanam"
+            <video
+              autoPlay
+              loop
+              muted
               className="h-50 w-80 object-cover"
-            />
+            >
+              <source src="/VLED 5.mp4" type="video/mp4">
+             </source>
+                Your browser does not support the video tag.
+            </video>
           </div>
-          <p className="text-gray-600 text-sm sm:text-base lg:text-lg max-w-md">
+          <p className="text-gray-600 text-sm sm:text-base lg:text-lg max-w-md z-50">
             Transform classroom engagement with real-time polling and instant feedback
           </p>
           {/* Features Grid */}
