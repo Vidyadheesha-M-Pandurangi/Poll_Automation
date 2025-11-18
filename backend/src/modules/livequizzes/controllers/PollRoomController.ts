@@ -133,6 +133,8 @@ export class PollRoomController {
     @Body() body: { pollId: string; userId: string; answerIndex: number }
   ) {
     await this.pollService.submitAnswer(roomCode, body.pollId, body.userId, body.answerIndex);
+    const updatedResults = await this.pollService.getPollResults(roomCode);
+    pollSocket.emitToRoom(roomCode,'poll-results-updated', updatedResults);
     return { success: true };
   }
 

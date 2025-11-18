@@ -324,10 +324,13 @@ export default function TeacherPollRoom() {
       socket.off('disconnect');
       socket.off('connect_error');
       socket.off('error');
+      socket.off('poll-results-updated');
 
       // Set up new listeners
       socket.on('live-poll-results', handlePollUpdate);
-
+      socket.on('poll-results-updated', (data)=>{
+        setPollResults(data)
+      });
       socket.on('room-updated', (updatedRoom) => {
         // console.log('Room updated:', updatedRoom);
         setStudents(updatedRoom.students || []);
@@ -368,6 +371,7 @@ export default function TeacherPollRoom() {
       socket.off('disconnect');
       socket.off('connect_error');
       socket.off('error');
+      socket.off('poll-results-updated');
       socket.emit('leave-room', roomCode, null);
     };
   }, [roomCode]);
@@ -795,6 +799,7 @@ export default function TeacherPollRoom() {
       setOptions(["", "", "", ""]);
       setCorrectOptionIndex(0);
       // setShowPreview(false);
+      fetchResults()
     } catch (error) {
       console.error("Failed to create poll:", error);
       toast.error("Failed to create poll");
@@ -809,6 +814,7 @@ export default function TeacherPollRoom() {
       toast.error("Failed to fetch results");
     }
   };
+ 
 
   useEffect(() => {
     setIsTranscribing(!!transcriber.output?.isBusy);
