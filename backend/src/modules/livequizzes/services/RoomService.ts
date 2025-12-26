@@ -2,6 +2,8 @@ import { injectable } from 'inversify';
 import { Room } from '../../../shared/database/models/Room.js';
 import type { Room as RoomType, Poll, PollAnswer } from '../interfaces/PollRoom.js';
 import { UserModel } from '../../../shared/database/models/User.js';
+import {ObjectId} from 'mongodb'
+import { NotFoundError } from 'routing-controllers';
 
 @injectable()
 export class RoomService {
@@ -10,10 +12,12 @@ export class RoomService {
   async createRoom(name: string, teacherId: string): Promise<RoomType> {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    const teachername = await this.userModel.findOne({ firebaseUID: teacherId }).lean();
     const newRoom = await new Room({
       roomCode: code,
       name,
       teacherId,
+      teacherName: `${teachername?.firstName} ${teachername?.lastName}`.trim(),
       createdAt: new Date(),
       status: 'active',
       polls: []
@@ -23,7 +27,7 @@ export class RoomService {
   }
 
   async getRoomByCode(code: string): Promise<RoomType | null> {
-    return await Room.findOne({ roomCode: code }).lean();
+    return await Room.findOne({ roomCode: code }).populate('students','firstName email').lean()
   }
 
   async getRoomsByTeacher(teacherId: string, status?: 'active' | 'ended'): Promise<RoomType[]> {
@@ -125,7 +129,6 @@ export class RoomService {
 
   async isRoomValid(code: string): Promise<boolean> {
     const room = await Room.findOne({ roomCode: code }).lean();
-    console.log('[isRoomValid] Fetched room:', room);
     return !!room && room.status.toLowerCase() === 'active';
   }
 
@@ -179,5 +182,37 @@ export class RoomService {
         }))
       }))
     };
+  }
+
+
+  async enrollStudent(userId:string,roomCode:string){
+    const room = await Room.findOne({roomCode})
+    if(!room){
+      throw new NotFoundError("Room is not found")
+    }
+    const userObjectId=new ObjectId(userId)
+    // const existingStudent = await Room.findOne({students:{$in:[userObjectId]}})
+    const isAlreadyEnrolled = room.students.some((id) => id.equals(userObjectId))
+    if(isAlreadyEnrolled){
+      console.log("User Already enrolled in the course")
+      return room
+    }
+    const updatedRoom = await Room.findOneAndUpdate({roomCode},{$addToSet:{students:userObjectId}},{new:true})
+    return updatedRoom
+  }
+
+  async unEnrollStudent(userId:string,roomCode:string){
+    const room = await Room.findOne({roomCode})
+    if(!room){
+      throw new NotFoundError("Room is not found")
+    }
+    const userObjectId=new ObjectId(userId)
+    const isAlreadyEnrolled = room.students.some((id) => id.equals(userObjectId))
+    if(!isAlreadyEnrolled){
+      console.log("User Not enrolled in the course")
+      return room
+    }
+    const updatedRoom = await Room.findOneAndUpdate({roomCode},{$pull:{students:userObjectId}},{new:true})
+    return updatedRoom
   }
 }

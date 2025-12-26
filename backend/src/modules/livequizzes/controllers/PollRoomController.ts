@@ -8,6 +8,9 @@ import {
   HttpCode,
   Req,
   Res,
+  NotFoundError,
+  Delete,
+  BadRequestError,
 } from 'routing-controllers';
 import { Request, Response } from 'express';
 import multer from 'multer';
@@ -27,6 +30,8 @@ import { OpenAPI } from 'routing-controllers-openapi';
 import dotenv from 'dotenv';
 import mime from 'mime-types';
 import * as fsp from 'fs/promises';
+import { CreateInMemoryPollDto, InMemoryPollResponse, InMemoryPollResult, SubmitInMemoryAnswerDto } from '../validators/LivepollValidator.js';
+import { validate } from 'class-validator';
 
 dotenv.config();
 const appOrigins = process.env.APP_ORIGINS;
@@ -128,6 +133,8 @@ export class PollRoomController {
     @Body() body: { pollId: string; userId: string; answerIndex: number }
   ) {
     await this.pollService.submitAnswer(roomCode, body.pollId, body.userId, body.answerIndex);
+    const updatedResults = await this.pollService.getPollResults(roomCode);
+    pollSocket.emitToRoom(roomCode,'poll-results-updated', updatedResults);
     return { success: true };
   }
 
@@ -199,11 +206,15 @@ async getYoutubeAudio(@Req() req: Request, @Res() res: Response) {
     });
 
     try {
-      const { transcript, questionSpec, model } = req.body;
+      const { transcript, questionSpec, model, questionCount } = req.body;
 
       const SEGMENTATION_THRESHOLD = parseInt(process.env.TRANSCRIPT_SEGMENTATION_THRESHOLD || '6000', 10);
       const defaultModel = 'gemma3';
       const selectedModel = model?.trim() || defaultModel;
+
+      // Parse questionCount with default value
+      const numQuestions = questionCount ? parseInt(questionCount, 10) : 2;
+
       let segments: Record<string, string>;
       if (transcript.length <= SEGMENTATION_THRESHOLD) {
         console.log('[generateQuestions] Small transcript detected. Using full transcript without segmentation.');
@@ -213,18 +224,21 @@ async getYoutubeAudio(@Req() req: Request, @Res() res: Response) {
         console.log('[generateQuestions] Transcript is long; running segmentation...');
         segments = await this.aiContentService.segmentTranscript(transcript, selectedModel);
       }
-      // ✅ Safe default questionSpec
-      let safeSpec: QuestionSpec[] = [{ SOL: 2 }]; // default
+
+      // ✅ Safe default questionSpec with custom count
+      let safeSpec: QuestionSpec[] = [{ SOL: numQuestions }];
       if (questionSpec && typeof questionSpec === 'object' && !Array.isArray(questionSpec)) {
         safeSpec = [questionSpec];
       } else if (Array.isArray(questionSpec) && typeof questionSpec[0] === 'object') {
         safeSpec = questionSpec;
       } else {
-        console.warn('Invalid questionSpec provided; using default [{ SOL: 2 }]');
+        console.warn(`Invalid questionSpec provided; using default [{ SOL: ${numQuestions} }]`);
       }
       console.log('Using questionSpec:', safeSpec);
       console.log('[generateQuestions] Transcript length:', transcript.length);
       console.log('[generateQuestions] Transcript preview:', segments);
+     
+      console.log('[generateQuestions] Number of questions to generate:', numQuestions);
       const generatedQuestions = await this.aiContentService.generateQuestions({
         segments,
         globalQuestionSpecification: safeSpec,
@@ -236,6 +250,7 @@ async getYoutubeAudio(@Req() req: Request, @Res() res: Response) {
         transcriptPreview: transcript.substring(0, 200) + '...',
         segmentsCount: Object.keys(segments).length,
         totalQuestions: generatedQuestions.length,
+        requestedQuestions: numQuestions,
         questions: generatedQuestions,
       });
     } catch (err: any) {
@@ -245,4 +260,5 @@ async getYoutubeAudio(@Req() req: Request, @Res() res: Response) {
       await this.cleanupService.cleanup(tempPaths);
     }
   }
+  
 }
